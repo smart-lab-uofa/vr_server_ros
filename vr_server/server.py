@@ -3,7 +3,7 @@ from rclpy.node import Node
 
 from vr_msgs.msg import Status, IndexedMesh
 from vr_msgs.srv import GetChunks
-from geometry_msgs.msg import Pose, Point, Quaternion
+from geometry_msgs.msg import PoseStamped, Point, Quaternion
 from mesh_msgs.msg import MeshGeometry, MeshTriangleIndices
 
 from std_srvs.srv import SetBool
@@ -13,6 +13,8 @@ import json
 import time
 import asyncio
 from functools import partial
+import cProfile, pstats, io
+from pstats import SortKey
 from websockets.server import serve
 from .streamer import MeshStreamer
 
@@ -23,7 +25,7 @@ class VRServer(Node):
         # Setting up topic publishers
         super().__init__('vrserver')
         self.tracking_pub_ = self.create_publisher(PoseStamped, '~/tracking', 10)
-        self.echo_sub_ = self.create_subscriber(PoseStamped, '~/tracking_echo', self.echo)
+        self.echo_sub_ = self.create_subscription(PoseStamped, '~/tracking_echo', self.echo, 10)
         # self.mesh_pub_ = self.create_publisher(IndexedMesh, '~/mesh', 10)
         self.status_pub_ = self.create_publisher(Status, '~/status', 10)
         self.mapping_srv_ = self.create_service(SetBool, "~/mapping", self.mapping_callback)
@@ -31,6 +33,7 @@ class VRServer(Node):
 
         # Creating callback
         self.timer = self.create_timer(0.05, self.timer_callback)
+        #self.timer2 = self.create_timer(2.0, self.stats_callback)
 
         # Setting up camera
         init = sl.InitParameters()
@@ -52,7 +55,7 @@ class VRServer(Node):
         positional_tracking_parameters.set_floor_as_origin = True
         returned_state = self.zed.enable_positional_tracking(positional_tracking_parameters)
         # 6144
-        self.spatial_mapping_parameters = sl.SpatialMappingParameters(resolution = sl.MAPPING_RESOLUTION.MEDIUM,mapping_range =  sl.MAPPING_RANGE.MEDIUM,max_memory_usage = 4096,save_texture = False,use_chunk_only = True,reverse_vertex_order = False,map_type = sl.SPATIAL_MAP_TYPE.MESH)
+        self.spatial_mapping_parameters = sl.SpatialMappingParameters(resolution = sl.MAPPING_RESOLUTION.MEDIUM,mapping_range =  sl.MAPPING_RANGE.MEDIUM, max_memory_usage = 4096,save_texture = False,use_chunk_only = True,reverse_vertex_order = False,map_type = sl.SPATIAL_MAP_TYPE.MESH)
         self.mesh = sl.Mesh()
 
         self.tracking_state = sl.POSITIONAL_TRACKING_STATE.OFF
@@ -60,7 +63,7 @@ class VRServer(Node):
 
 
         self.runtime_parameters = sl.RuntimeParameters()
-        self.runtime_parameters.confidence_threshold = 50
+        # self.runtime_parameters.confidence_threshold = 50
 
         stream_params = sl.StreamingParameters()
         stream_params.codec = sl.STREAMING_CODEC.H265
@@ -80,10 +83,14 @@ class VRServer(Node):
         self.get_logger().info(str(self.mapping_state))
 
         self.streamer = MeshStreamer(self.mesh, self.get_logger)
+        self.pr = cProfile.Profile()
 
     def timer_callback(self):
+        #self.pr.enable()
         # self.get_logger().info("Timer callback")
-        if self.zed.grab(self.runtime_parameters) == sl.ERROR_CODE.SUCCESS:
+        # ret = self.zed.grab(self.runtime_parameters)
+        ret = self.zed.grab()
+        if ret == sl.ERROR_CODE.SUCCESS:
             self.zed.retrieve_image(self.image, sl.VIEW.LEFT)
             self.tracking_state = self.zed.get_position(self.pose)
 
@@ -101,18 +108,18 @@ class VRServer(Node):
             self.streamer.update(self.mapping_state)
             
             p = PoseStamped()
-            p.header.stamp = self.get_clodk().now().to_msg()
-            p.position = Point()
+            p.header.stamp = self.get_clock().now().to_msg()
+            p.pose.position = Point()
             translation = self.pose.get_translation().get()
-            p.position.x = translation[0]
-            p.position.y = translation[1]
-            p.position.z = translation[2]
-            p.orientation = Quaternion()
+            p.pose.position.x = translation[0]
+            p.pose.position.y = translation[1]
+            p.pose.position.z = translation[2]
+            p.pose.orientation = Quaternion()
             orientation = self.pose.get_orientation().get()
-            p.orientation.x = orientation[0]
-            p.orientation.y = orientation[1]
-            p.orientation.z = orientation[2]
-            p.orientation.w = orientation[3]
+            p.pose.orientation.x = orientation[0]
+            p.pose.orientation.y = orientation[1]
+            p.pose.orientation.z = orientation[2]
+            p.pose.orientation.w = orientation[3]
 
             self.tracking_pub_.publish(p)
 
@@ -121,12 +128,16 @@ class VRServer(Node):
             s.mapping_state = str(self.mapping_state)
 
             self.status_pub_.publish(s)
+        #self.pr.disable()
+        else:
+            self.get_logger().info(str(ret))
     
 
     def echo(self, msg: PoseStamped):
-        latency = (self.get_clock().now() - msg.header.stamp)
+        now = self.get_clock().now().to_msg()
+        then = msg.header.stamp
 
-        self.get_logger().info("Latency: " + str(latency))
+        self.get_logger().info(f"Latency: {now.sec - then.sec}\t{now.nanosec - then.nanosec}")
 
       # def update_chunks(self):
     #     num_chunks = len(self.mesh.chunks)
@@ -205,6 +216,13 @@ class VRServer(Node):
         response.chunks = [self.make_mesh_msg(i, c) for i, c in enumerate(self.mesh.chunks)]
         self.get_logger().info(f"Responding to chunks request with {len(response.chunks)} chunks")
         return response
+
+    def stats_callback(self):
+        s = io.StringIO()
+        sortby = SortKey.CUMULATIVE
+        ps = pstats.Stats(self.pr, stream=s).sort_stats(sortby)
+        ps.print_stats()
+        self.get_logger().info(s.getvalue())
 
 
 async def inner_main(args=None):

@@ -29,9 +29,14 @@ class MeshStreamer:
         self.sender = threading.Thread(target=self.sender)
         self.sender.start()
 
+    def __del__(self):
+        self.pool.close()
+        self.pool.terminate()
+
     def sender(self):
         while True:
             data = self.send_queue.get()
+            #self.get_logger().info("Sending mesh chunk")
             broadcast(
                 self.clients[0],
                 data
@@ -46,6 +51,13 @@ class MeshStreamer:
     def chunks_updated(self):
         return self.chunks_pushed
 
+    @staticmethod
+    def send_chunk(old_num, n, chunk):
+        if n > old_num or chunk.has_been_updated:
+            return MeshStreamer.serialize_chunk(n, chunk)
+        return None
+
+
     def update(self, mapping_state):
         if mapping_state == sl.SPATIAL_MAPPING_STATE.OK:
             self.update_mesh()
@@ -53,27 +65,16 @@ class MeshStreamer:
     def update_mesh(self):
         if self.new_chunks:
             num_chunks = len(self.mesh.chunks)
-            # print(num_chunks)
-
-            # pushing new chunks
-            if num_chunks > self.num_chunks:
-                for n in range(self.num_chunks, num_chunks):
-                    self.send_queue.put(self.serialize_chunk(n, num_chunks, self.mesh.chunks[n]))
-
-            # updating existing chunks
-            # print("updating existing chunks")
-            for n in range(self.num_chunks):
-                if n < num_chunks and self.mesh.chunks[n].has_been_updated:
-                    # if self.mesh.chunks[n].triangles and self.mesh.chunks[n].vertices:
-                    self.send_queue.put(self.serialize_chunk(n, num_chunks, self.mesh.chunks[n]))
+            [self.send_queue.put(MeshStreamer.serialize_chunk(i, c)) for i, c in enumerate(self.mesh.chunks) if i > self.num_chunks or c.has_been_updated]
 
             self.num_chunks = num_chunks
             self.new_chunks = False
 
-    def serialize_chunk(self, idx, size, chunk) -> bytes:
-        vertices = chunk.vertices.flatten()
-        triangles = chunk.triangles.flatten()
-        normals = chunk.normals.flatten()
+    @staticmethod
+    def serialize_chunk(idx, chunk) -> bytes:
+        vertices = chunk.vertices.ravel()
+        triangles = chunk.triangles.ravel()
+        normals = chunk.normals.ravel()
         buffer = bytes(0)
 
         buffer += struct.pack("HHHH", idx, len(vertices), len(triangles), 0)
@@ -84,7 +85,7 @@ class MeshStreamer:
 
     async def push_all_chunks(self, websocket):
         for i in range(min(self.num_chunks, len(self.mesh.chunks))):
-            await websocket.send(self.serialize_chunk(i, self.num_chunks, self.mesh.chunks[i]))
+            await websocket.send(MeshStreamer.serialize_chunk(i, self.mesh.chunks[i]))
 
     async def connect_handler(self, websocket):
         if websocket.path == "/mesh":
