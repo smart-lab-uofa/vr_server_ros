@@ -13,6 +13,7 @@ from std_srvs.srv import SetBool
 import pyzed.sl as sl
 import json
 import time
+import ssl
 import asyncio
 from functools import partial
 from websockets.server import serve
@@ -162,6 +163,7 @@ class VRServer(Node):
         # self.mesh_pub_.publish(im)
 
     def mapping_callback(self, request, response):
+        self.get_logger().info(f"Mapping callback: {self.mapping_activated} {request.data}")
         if self.mapping_activated != request.data:
             if self.mapping_activated:
                 # Extract and clean up whole mesh
@@ -206,13 +208,16 @@ class VRServer(Node):
 async def inner_main(args=None):
     rclpy.init(args=args)
 
+    #ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    #ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+
     vr_server = VRServer()
     executor = MultiThreadedExecutor()
     executor.add_node(vr_server)
     async with serve(vr_server.streamer.connect_handler, "0.0.0.0", 5555):
         while executor.ok():
             executor.spin_once(timeout_sec=0)
-            await asyncio.sleep(1e-4)
+            await asyncio.sleep(0.001)
 
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically

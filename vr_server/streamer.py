@@ -1,4 +1,5 @@
 import asyncio
+import os
 from websockets.server import serve
 from websockets import broadcast
 import json
@@ -6,12 +7,14 @@ import pyzed.sl as sl
 import numpy as np
 import time
 import struct
+import ffmpeg
 
 
 class MeshStreamer:
-    def __init__(self, mesh):
-        self.clients = set()
+    def __init__(self, mesh, get_logger):
+        self.clients = (set(), set())
         self.mesh = mesh
+        self.get_logger = get_logger
         self.new_chunks = False
         self.chunks_pushed = True
         self.num_chunks = 0
@@ -41,7 +44,7 @@ class MeshStreamer:
             if num_chunks > self.num_chunks:
                 for n in range(self.num_chunks, num_chunks):
                     broadcast(
-                        self.clients,
+                        self.clients[0],
                         self.serialize_chunk(n, num_chunks, self.mesh.chunks[n]),
                     )
 
@@ -51,7 +54,7 @@ class MeshStreamer:
                 if n < num_chunks and self.mesh.chunks[n].has_been_updated:
                     # if self.mesh.chunks[n].triangles and self.mesh.chunks[n].vertices:
                     broadcast(
-                        self.clients,
+                        self.clients[0],
                         self.serialize_chunk(n, num_chunks, self.mesh.chunks[n]),
                     )
 
@@ -63,7 +66,7 @@ class MeshStreamer:
         vertices = chunk.vertices.flatten()
         triangles = chunk.triangles.flatten()
         normals = chunk.normals.flatten()
-        buffer = bytes()
+        buffer = bytes(0)
 
         buffer += struct.pack("HHHH", idx, len(vertices), len(triangles), 0)
         buffer += vertices.tobytes()
@@ -76,12 +79,17 @@ class MeshStreamer:
             await websocket.send(self.serialize_chunk(i, self.num_chunks, self.mesh.chunks[i]))
 
     async def connect_handler(self, websocket):
-        self.clients.add(websocket)
-        await self.push_all_chunks(websocket)
-        await websocket.wait_closed()
-        self.clients.remove(websocket)
+        if websocket.path == "/mesh":
+            self.clients[0].add(websocket)
+            await self.push_all_chunks(websocket)
+            await websocket.wait_closed()
+            self.clients[0].remove(websocket)
+        elif websocket.path == "/stream":
+            self.clients[1].add(websocket)
+            await websocket.wait_closed()
+            self.clients[1].remove(websocket)
 
-        if len(self.clients) == 0:
+        if len(self.clients[0]) == 0 and len(self.clients[1]) == 0:
             self.available = False
 
 
