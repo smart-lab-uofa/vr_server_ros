@@ -31,10 +31,10 @@ class MeshStreamer:
 
     def sender(self):
         while True:
-            n, num_chunks, chunk = self.send_queue.get()
+            data = self.send_queue.get()
             broadcast(
                 self.clients[0],
-                self.serialize_chunk(n, num_chunks, chunk),
+                data
             )
             if self.send_queue.empty():
                 self.chunks_pushed = True
@@ -47,7 +47,6 @@ class MeshStreamer:
         return self.chunks_pushed
 
     def update(self, mapping_state):
-        self.get_logger().info(str(mapping_state))
         if mapping_state == sl.SPATIAL_MAPPING_STATE.OK:
             self.update_mesh()
 
@@ -59,14 +58,14 @@ class MeshStreamer:
             # pushing new chunks
             if num_chunks > self.num_chunks:
                 for n in range(self.num_chunks, num_chunks):
-                    self.send_queue.put((n, num_chunks, self.mesh.chunks[n]))
+                    self.send_queue.put(self.serialize_chunk(n, num_chunks, self.mesh.chunks[n]))
 
             # updating existing chunks
             # print("updating existing chunks")
             for n in range(self.num_chunks):
                 if n < num_chunks and self.mesh.chunks[n].has_been_updated:
                     # if self.mesh.chunks[n].triangles and self.mesh.chunks[n].vertices:
-                    self.send_queue.put((n, num_chunks, self.mesh.chunks[n]))
+                    self.send_queue.put(self.serialize_chunk(n, num_chunks, self.mesh.chunks[n]))
 
             self.num_chunks = num_chunks
             self.new_chunks = False
