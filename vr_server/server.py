@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 
-from vr_msgs.msg import Status
+from vr_msgs.msg import Status, IndexedMesh
 from geometry_msgs.msg import Pose, Point, Quaternion
 from shape_msgs.msg import Mesh, MeshTriangle
 
@@ -18,7 +18,7 @@ class VRServer(Node):
         # Setting up topic publishers
         super().__init__('vrserver')
         self.tracking_pub_ = self.create_publisher(Pose, '~/tracking', 10)
-        self.mesh_pub_ = self.create_publisher(Mesh, '~/mesh', 10)
+        self.mesh_pub_ = self.create_publisher(IndexedMesh, '~/mesh', 10)
         self.status_pub_ = self.create_publisher(Status, '~/status', 10)
         self.mapping_srv_ = self.create_service(SetBool, "~/mapping", self.mapping_callback)
 
@@ -99,8 +99,8 @@ class VRServer(Node):
             self.tracking_pub_.publish(p)
 
             s = Status()
-            status.tracking_state = str(self.tracking_state)
-            status.mapping_state = str(self.mapping_state)
+            s.tracking_state = str(self.tracking_state)
+            s.mapping_state = str(self.mapping_state)
 
             self.status_pub_.publish(s)
     
@@ -109,15 +109,16 @@ class VRServer(Node):
 
         if num_chunks > self.num_chunks:
             for n in range(self.num_chunks, num_chunks):
-                self.pub_chunk(self.mesh.chunks[n])
+                self.pub_chunk(n, self.mesh.chunks[n])
 
         for n in range(self.num_chunks):
             if n < num_chunks and self.mesh.chunks[n].has_been_updated:
-                self.pub_chunk(self.mesh.chunks[n])
+                self.pub_chunk(n, self.mesh.chunks[n])
 
         self.num_chunks = num_chunks
 
-    def pub_chunk(self, chunk):
+    def pub_chunk(self, n, chunk):
+        im = IndexedMesh()
         m = Mesh()
         m.triangles = []
         for t in chunk.triangles:
@@ -131,7 +132,9 @@ class VRServer(Node):
             p.y = float(v[1])
             p.z = float(v[2])
             m.vertices.append(p)
-        self.mesh_pub_.publish(m)
+        im.mesh = m
+        im.i = n
+        self.mesh_pub_.publish(im)
 
     def mapping_callback(self, request, response):
         if self.mapping_activated != request.data:
