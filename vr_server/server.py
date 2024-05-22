@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 
-from std_msgs.msg import String
+from vr_msgs.msg import Status
 from geometry_msgs.msg import Pose, Point, Quaternion
 from shape_msgs.msg import Mesh, MeshTriangle
 
@@ -19,7 +19,7 @@ class VRServer(Node):
         super().__init__('vrserver')
         self.tracking_pub_ = self.create_publisher(Pose, '~/tracking', 10)
         self.mesh_pub_ = self.create_publisher(Mesh, '~/mesh', 10)
-        self.status_pub_ = self.create_publisher(String, '~/status', 10)
+        self.status_pub_ = self.create_publisher(Status, '~/status', 10)
         self.mapping_srv_ = self.create_service(SetBool, "~/mapping", self.mapping_callback)
 
         # Creating callback
@@ -44,7 +44,7 @@ class VRServer(Node):
         positional_tracking_parameters.set_floor_as_origin = True
         returned_state = self.zed.enable_positional_tracking(positional_tracking_parameters)
 
-        self.spatial_mapping_parameters = sl.SpatialMappingParameters(resolution = sl.MAPPING_RESOLUTION.MEDIUM,mapping_range =  sl.MAPPING_RANGE.MEDIUM,max_memory_usage = 2048,save_texture = True,use_chunk_only = True,reverse_vertex_order = False,map_type = sl.SPATIAL_MAP_TYPE.MESH)
+        self.spatial_mapping_parameters = sl.SpatialMappingParameters(resolution = sl.MAPPING_RESOLUTION.MEDIUM,mapping_range =  sl.MAPPING_RANGE.MEDIUM,max_memory_usage = 6144,save_texture = True,use_chunk_only = True,reverse_vertex_order = False,map_type = sl.SPATIAL_MAP_TYPE.MESH)
         self.mesh = sl.Mesh()
 
         self.tracking_state = sl.POSITIONAL_TRACKING_STATE.OFF
@@ -98,13 +98,10 @@ class VRServer(Node):
 
             self.tracking_pub_.publish(p)
 
-            s = String()
-            s.data = json.dumps(
-                {
-                    "tracking_state": str(self.tracking_state),
-                    "mapping_state": str(self.mapping_state),
-                }
-            )
+            s = Status()
+            status.tracking_state = str(self.tracking_state)
+            status.mapping_state = str(self.mapping_state)
+
             self.status_pub_.publish(s)
     
     def update_chunks(self):
