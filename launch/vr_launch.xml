@@ -1,0 +1,24 @@
+<launch>
+    <node pkg="vr-server" exec="vr_server" name="server" />
+    <node pkg="rosbridge_server" exec="rosbridge_websocket" name="rosbrige_websocket">
+        <param name="fragment_timeout" value="9090"/>
+        <param name="delay_between_messages" value="0"/>
+        <param name="max_message_size" value="10000000"/>
+        <param name="unregister_timeout" value="10.0"/>
+        <param name="use_compression" value="false"/>
+        <param name="call_services_in_new_thread" value="false"/>
+
+        <param name="topics_glob" value=""/>
+        <param name="services_glob" value=""/>
+        <param name="params_glob" value=""/>
+
+        <param name="bson_only_mode" value="false"/>
+    </node>
+    <node name="rosapi" pkg="rosapi" exec="rosapi_node">
+        <param name="topics_glob" value = ""/>
+        <param name="services_glob" value=""/>
+        <param name="params_glob" value=""/>
+    </node>
+    <executable cmd="/home/smartlab/vr-site/start.sh" name="webserver" output="both"/>
+    <executable cmd="/home/smartlab/vr-site/start_streaming.sh" name="streamer" output="both" />
+</launch>

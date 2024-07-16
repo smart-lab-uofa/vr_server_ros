@@ -12,6 +12,7 @@ import pyzed.sl as sl
 import json
 import time
 import asyncio
+from functools import partial
 from websockets.server import serve
 from .streamer import MeshStreamer
 
@@ -33,7 +34,7 @@ class VRServer(Node):
         # Setting up camera
         init = sl.InitParameters()
         init.camera_resolution = sl.RESOLUTION.SVGA
-        init.camera_fps = 60
+        init.camera_fps = 60 
         init.depth_mode = sl.DEPTH_MODE.ULTRA
         init.coordinate_units = sl.UNIT.METER
         init.coordinate_system = sl.COORDINATE_SYSTEM.RIGHT_HANDED_Y_UP # OpenGL's coordinate system is right_handed
@@ -60,6 +61,10 @@ class VRServer(Node):
         self.runtime_parameters = sl.RuntimeParameters()
         self.runtime_parameters.confidence_threshold = 50
 
+        stream_params = sl.StreamingParameters()
+        stream_params.codec = sl.STREAMING_CODEC.H265
+        self.zed.enable_streaming(stream_params)
+
         self.mapping_activated = False
 
         self.image = sl.Mat()
@@ -73,9 +78,10 @@ class VRServer(Node):
         self.get_logger().info("Finished setup")
         self.get_logger().info(str(self.mapping_state))
 
-        self.streamer = MeshStreamer(self.mesh)
+        self.streamer = MeshStreamer(self.mesh, self.get_logger)
 
     def timer_callback(self):
+        # self.get_logger().info("Timer callback")
         if self.zed.grab(self.runtime_parameters) == sl.ERROR_CODE.SUCCESS:
             self.zed.retrieve_image(self.image, sl.VIEW.LEFT)
             self.tracking_state = self.zed.get_position(self.pose)
