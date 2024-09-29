@@ -21,7 +21,7 @@
         <param name="services_glob" value=""/>
         <param name="params_glob" value=""/>
     </node>
-    <node pkg="areal_landing_px4_communication" exec="px4_mocap_pubsub" name="vicon_pubsub" />
+	    <!--<node pkg="areal_landing_px4_communication" exec="px4_mocap_pubsub" name="vicon_pubsub" />-->
     <executable cmd="/home/smartlab/vr-site/start_streaming.sh" name="streamer" output="both" />
-    <executable cmd="/home/smartlab/Downloads/Micro-XRCE-DDS-Agent/build/MicroXRCEAgent serial -b 3000000 -D /dev/ttyTHS1" name="microxrce" output="both" /> 
+	    <!-- <executable cmd="/home/smartlab/Downloads/Micro-XRCE-DDS-Agent/build/MicroXRCEAgent serial -b 3000000 -D /dev/ttyTHS1" name="microxrce" output="both" />--> 
 </launch>
