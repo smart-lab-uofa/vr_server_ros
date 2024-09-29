@@ -8,6 +8,8 @@ import numpy as np
 import time
 import struct
 import ffmpeg
+import threading
+import queue
 
 
 class MeshStreamer:
@@ -23,6 +25,19 @@ class MeshStreamer:
         self.available = False
         self.should_change_state = False
         self.current_mapping_state = sl.SPATIAL_MAPPING_STATE.NOT_ENABLED
+        self.send_queue = queue.Queue()
+        self.sender = threading.Thread(target=self.sender)
+        self.sender.start()
+
+    def sender(self):
+        while True:
+            n, num_chunks, chunk = self.send_queue.get()
+            broadcast(
+                self.clients[0],
+                self.serialize_chunk(n, num_chunks, chunk),
+            )
+            if self.send_queue.empty():
+                self.chunks_pushed = True
 
     def update_chunks(self):
         self.new_chunks = True
@@ -32,6 +47,7 @@ class MeshStreamer:
         return self.chunks_pushed
 
     def update(self, mapping_state):
+        self.get_logger().info(str(mapping_state))
         if mapping_state == sl.SPATIAL_MAPPING_STATE.OK:
             self.update_mesh()
 
@@ -43,24 +59,17 @@ class MeshStreamer:
             # pushing new chunks
             if num_chunks > self.num_chunks:
                 for n in range(self.num_chunks, num_chunks):
-                    broadcast(
-                        self.clients[0],
-                        self.serialize_chunk(n, num_chunks, self.mesh.chunks[n]),
-                    )
+                    self.send_queue.put((n, num_chunks, self.mesh.chunks[n]))
 
             # updating existing chunks
             # print("updating existing chunks")
             for n in range(self.num_chunks):
                 if n < num_chunks and self.mesh.chunks[n].has_been_updated:
                     # if self.mesh.chunks[n].triangles and self.mesh.chunks[n].vertices:
-                    broadcast(
-                        self.clients[0],
-                        self.serialize_chunk(n, num_chunks, self.mesh.chunks[n]),
-                    )
+                    self.send_queue.put((n, num_chunks, self.mesh.chunks[n]))
 
             self.num_chunks = num_chunks
             self.new_chunks = False
-            self.chunks_pushed = True
 
     def serialize_chunk(self, idx, size, chunk) -> bytes:
         vertices = chunk.vertices.flatten()
