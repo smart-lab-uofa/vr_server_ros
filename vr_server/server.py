@@ -22,7 +22,8 @@ class VRServer(Node):
 
         # Setting up topic publishers
         super().__init__('vrserver')
-        self.tracking_pub_ = self.create_publisher(Pose, '~/tracking', 10)
+        self.tracking_pub_ = self.create_publisher(PoseStamped, '~/tracking', 10)
+        self.echo_sub_ = self.create_subscriber(PoseStamped, '~/tracking_echo', self.echo)
         # self.mesh_pub_ = self.create_publisher(IndexedMesh, '~/mesh', 10)
         self.status_pub_ = self.create_publisher(Status, '~/status', 10)
         self.mapping_srv_ = self.create_service(SetBool, "~/mapping", self.mapping_callback)
@@ -99,7 +100,8 @@ class VRServer(Node):
 
             self.streamer.update(self.mapping_state)
             
-            p = Pose()
+            p = PoseStamped()
+            p.header.stamp = self.get_clodk().now().to_msg()
             p.position = Point()
             translation = self.pose.get_translation().get()
             p.position.x = translation[0]
@@ -120,7 +122,13 @@ class VRServer(Node):
 
             self.status_pub_.publish(s)
     
-    # def update_chunks(self):
+
+    def echo(self, msg: PoseStamped):
+        latency = (self.get_clock().now() - msg.header.stamp)
+
+        self.get_logger().info("Latency: " + str(latency))
+
+      # def update_chunks(self):
     #     num_chunks = len(self.mesh.chunks)
 
     #     if num_chunks > self.num_chunks:
