@@ -24,7 +24,8 @@ class VRServer(Node):
         self.mapping_group = MutuallyExclusiveCallbackGroup()
         # Setting up topic publishers
         super().__init__('vrserver')
-        self.tracking_pub_ = self.create_publisher(Pose, '~/tracking', 10)
+        self.tracking_pub_ = self.create_publisher(PoseStamped, '~/tracking', 10)
+        self.echo_sub_ = self.create_subscriber(PoseStamped, '~/tracking_echo', self.echo)
         # self.mesh_pub_ = self.create_publisher(IndexedMesh, '~/mesh', 10)
         self.status_pub_ = self.create_publisher(Status, '~/status', 10)
         self.mapping_srv_ = self.create_service(
@@ -92,7 +93,8 @@ class VRServer(Node):
 
             if self.mapping_activated:
                 self.mapping_state = self.zed.get_spatial_mapping_state()
-            p = Pose()
+            p = PoseStamped()
+            p.header.stamp = self.get_clodk().now().to_msg()
             p.position = Point()
             translation = self.pose.get_translation().get()
             p.position.x = translation[0]
@@ -120,6 +122,10 @@ class VRServer(Node):
                 self.zed.retrieve_spatial_map_async(self.mesh)
 
             self.streamer.update(self.mapping_state)
+    def echo(self, msg: PoseStamped):
+        latency = (self.get_clock().now() - msg.header.stamp)
+
+        self.get_logger().info("Latency: " + str(latency))
 
       # def update_chunks(self):
     #     num_chunks = len(self.mesh.chunks)
